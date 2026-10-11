@@ -1,0 +1,10 @@
+<!doctype html><html><head><title>ETLab Login</title></head><body>
+<form class="form-horizontal" id="login-form" action="/user/login" method="post">
+  <input type="hidden" name="YII_CSRF_TOKEN" value="synthetic-csrf-value">
+  <label for="LoginForm_username">Username *</label>
+  <input type="text" name="LoginForm[username]" id="LoginForm_username">
+  <label for="LoginForm_password">Password *</label>
+  <input type="password" name="LoginForm[password]" id="LoginForm_password">
+  <button type="submit">Login</button>
+</form><a href="/user/resetpassword">Forgot password</a>
+</body></html>

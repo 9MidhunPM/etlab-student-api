@@ -1,0 +1,10 @@
+<!doctype html><html><head><title>Attendance</title></head><body><main><h1>Attendance history</h1>
+<form method="get" action="/student/attendance">
+<label for="from">From date</label><input id="from" name="Attendance[from]" type="date" value="2026-09-01" min="2026-01-01" max="2026-12-31">
+<label for="to">To date</label><input id="to" name="Attendance[to]" type="date" value="2026-09-30">
+<label for="query">Subject search</label><input id="query" name="Attendance[search]" type="search" value="Algorithms" maxlength="40">
+<label for="label">Label</label><input id="label" name="Attendance[label]" type="text" value="Term I">
+<label for="count">Minimum classes</label><input id="count" name="Attendance[minimum_classes]" type="number" min="0" max="100" value="0">
+<label for="time">Starting time</label><input id="time" name="Attendance[starting_time]" type="datetime-local" value="2026-09-01T09:00">
+<input name="YII_CSRF_TOKEN" type="hidden" value="synthetic-csrf-value">
+</form><p>Read-only attendance history.</p></main></body></html>

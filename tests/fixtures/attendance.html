@@ -1,0 +1,22 @@
+<!doctype html><html><head><title>Attendance</title></head><body>
+<aside><a href="/student/delete?id=999">Delete record</a></aside>
+<main><h1>Subject attendance</h1>
+<form method="get" action="/student/attendance">
+<label for="semester">Semester</label>
+<select id="semester" name="StudentAttendance[semester]">
+<option value="1">Semester I</option><option value="2" selected>Semester II</option>
+</select><input type="hidden" name="YII_CSRF_TOKEN" value="synthetic-csrf-value">
+</form>
+<table><caption>Attendance summary</caption><thead><tr>
+<th rowspan="2">Subject</th><th colspan="2">Classes</th><th rowspan="2">Percentage</th>
+</tr><tr><th>Attended</th><th>Conducted</th></tr></thead><tbody>
+<tr><td>CS201 — Algorithms</td><td>24</td><td>30</td><td>80.00%</td></tr>
+<tr><td>MA201 — Mathematics</td><td>31</td><td>32</td><td>96.875%</td></tr>
+</tbody></table>
+<a href="/ktuacademics/student/viewattendancesubject/482">Algorithms details</a>
+<a href="/ktuacademics/student/viewattendancesubjectdutyleave/482">Duty leave details</a>
+<a href="/student/results">Exam results</a>
+<a href="/student/attendance?action=delete">Unsafe query</a>
+<a href="/student/submitattendance/482">Unsafe submit</a>
+<a href="https://other.etlab.in/student/attendance">Different student institution</a>
+</main></body></html>
