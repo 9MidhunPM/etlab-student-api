@@ -1,12 +1,14 @@
 # Deploying with Dokploy
 
-Use a **Dokploy Application with the repository's Dockerfile**, one replica, and `APP_MODE=multiuser` for a shared service without a configured student username/password. Student credentials then arrive only in an authorized session-creation request and are discarded after login. This guide does not imply that a server has already been deployed; consult the [verification record](verification.md) for observed deployment status.
+Use a **Dokploy Application with the repository's Dockerfile**, one replica, and `APP_MODE=multiuser` for a shared service without a configured student username/password. Student credentials then arrive only in an authorized session-creation request and are discarded after login.
+
+The current public source is [9MidhunPM/etlab-student-api](https://github.com/9MidhunPM/etlab-student-api), and the deployed API documentation is [https://etlab-api.midhunpm.in/docs](https://etlab-api.midhunpm.in/docs). On 2026-10-11, the initial Dokploy deployment completed with status `done`, a running healthy container, and passing HTTPS checks. Push-triggered deployment `OY4ycYOXOBuGnNFz03EPr` also completed for source commit `6ec610560cf9c9a5738ccd9ec28370487f323093`. The deployment uses all 19 example configuration keys, with a fresh private operator token, `APP_MODE=multiuser`, and empty student username/password values. See the [verification record](verification.md) for exact checks and remaining limits.
 
 `.env.example` is an editable personal-mode template. Its blank credentials and blank token deliberately do not constitute a bootable configuration. A shared deployment must override the mode and set a newly generated operator token.
 
 ## Source and build
 
-Create an Application in the intended Dokploy project/environment. Select the GitHub provider with access to your ETLab API repository, the intended branch (normally `main`), and build path `/`. Configure runtime variables in the Environment tab and keep one application replica in the Advanced/cluster settings. These are separate application settings in [Dokploy's Applications documentation](https://docs.dokploy.com/docs/core/applications).
+Create an Application in the intended Dokploy project/environment. Select the GitHub provider with access to your ETLab API repository (the current source is `9MidhunPM/etlab-student-api`), the intended branch (normally `main`), and build path `/`. Configure runtime variables in the Environment tab and keep one application replica in the Advanced/cluster settings. These are separate application settings in [Dokploy's Applications documentation](https://docs.dokploy.com/docs/core/applications).
 
 Set the build configuration:
 
@@ -64,7 +66,7 @@ Use exact `ETLAB_ATTACHMENT_HOSTS` entries only when a permitted institution act
 
 ## Domain and HTTPS
 
-Use the confirmed API hostname rather than assuming a domain from the repository name. Point its DNS at the intended Dokploy server and add it in Domains with:
+The current deployment uses `etlab-api.midhunpm.in`. For another installation, confirm its API hostname, point its DNS at the intended Dokploy server, and add it in Domains with:
 
 | Domain setting | Value |
 | --- | --- |
@@ -86,9 +88,9 @@ Save the source, runtime environment, and domain settings, then deploy. Wait for
 Check the confirmed HTTPS base URL:
 
 ```sh
-# Replace the hostname with the domain actually configured in Dokploy.
-curl --fail-with-body https://api.example.edu/healthz
-curl --fail-with-body https://api.example.edu/openapi.json
+# Replace this hostname if deploying a separate installation.
+curl --fail-with-body https://etlab-api.midhunpm.in/healthz
+curl --fail-with-body https://etlab-api.midhunpm.in/openapi.json
 ```
 
 Check that `/docs` renders in a browser, and an unauthenticated `/v1/me/profile` request returns 401 with `Cache-Control: no-store`. These checks require no student password. In multi-user mode, the operator token cannot read student data; its intended operation is admitting `POST /v1/sessions`. Use the [multi-user examples](api.md#multi-user-mode) when authorized student login testing is requested.

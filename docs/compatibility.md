@@ -22,7 +22,7 @@ Outbound network access became available during verification, and updated author
 | `profile`, `subjects`, `timetable`, `attendance`, `results` | Opt-in personal-mode test passed real-upstream base fetches, response schemas/titles, privacy/request-ID headers, cache-repeat timestamp checks, and session inspection/deletion | Live base resource/contract smoke verified |
 | `assignments`, `materials`, `notices` | Navigation links discovered for the authorized account | Discovery only; reads, filters, details, and downloads unverified |
 
-These observations used personal mode. Live multi-user operation, alternate institutions, filters, detail pages, attachment downloads, and comparisons with protected portal GUI values have not been certified by this evidence. A successful base page is not verification of its linked workflows. Runtime capability statuses remain discovery metadata; they do not automatically promote a feature after a documentation verification run.
+These student-data observations used personal mode. The [hosted multi-user service](https://etlab-api.midhunpm.in/docs) has separately passed HTTPS, container-health, public-documentation, and authentication-boundary checks. Hosted student login/reads, alternate institutions, filters, detail pages, attachment downloads, and comparisons with protected portal GUI values remain unverified. A successful base page is not verification of its linked workflows. Runtime capability statuses remain discovery metadata; they do not automatically promote a feature after a documentation verification run.
 
 ## Capability status
 

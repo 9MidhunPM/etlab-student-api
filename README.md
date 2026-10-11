@@ -6,6 +6,8 @@ This project uses the web portal. It is an independent integration and is not an
 
 The API preserves the college's labels, tables, text, filters, and downloadable links. It does not invent grades, calculate attendance from incomplete records, or turn unknown table headings into assumed academic meanings. See [response formats and endpoints](docs/api.md).
 
+Source: [9MidhunPM/etlab-student-api](https://github.com/9MidhunPM/etlab-student-api). The deployed service is at [etlab-api.midhunpm.in](https://etlab-api.midhunpm.in/docs), with public Swagger documentation. It runs in multi-user mode without stored student credentials; a trusted backend needs the private operator token to create student sessions. HTTPS, container health, documentation, and authentication boundaries have been verified; live student reads on the hosted service remain unverified.
+
 ## Quick start
 
 Requires Python 3.12 or later. From this directory:
