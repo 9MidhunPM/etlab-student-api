@@ -16,11 +16,11 @@ dependencies = [
   "dnspython>=2.7,<3",
   "pydantic>=2.10,<3",
   "pydantic-settings>=2.7,<3",
-  "beautifulsoup4>=4.12,<5",
+  "beautifulsoup4>=4.15,<5",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3,<10", "ruff>=0.9", "mypy>=1.14", "types-beautifulsoup4"]
+dev = ["pytest>=8.3,<10", "ruff>=0.9", "mypy>=1.14"]
 
 [project.scripts]
 etlab-api = "etlab_api.cli:main"
