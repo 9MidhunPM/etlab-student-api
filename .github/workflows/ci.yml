@@ -23,7 +23,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Type check
-        run: mypy src/etlab_api
+        run: mypy src/etlab_api examples/read_student.py
       - name: Test without live credentials
         run: python -m pytest -m 'not live'
       - name: Build distribution
@@ -32,5 +32,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t etlab-api:ci .
+      - name: Create synthetic runtime configuration
+        run: |
+          umask 077
+          cp .env.example .env
+          python3 - <<'PY'
+          from pathlib import Path
+          import secrets
+          path = Path('.env')
+          text = path.read_text().replace('APP_MODE=personal', 'APP_MODE=multiuser')
+          text = text.replace('API_TOKEN=\n', f'API_TOKEN={secrets.token_urlsafe(32)}\n')
+          path.write_text(text)
+          PY
+      - name: Build and check container configuration
+        run: |
+          docker compose build
+          docker compose run --rm --no-deps etlab-api etlab-api check
+      - name: Start documented Compose service
+        run: docker compose up --wait --wait-timeout 120 -d
+      - name: Verify public HTTP routes and authentication boundary
+        run: python3 scripts/smoke_api.py
+      - name: Stop temporary service
+        if: always()
+        run: docker compose down

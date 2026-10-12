@@ -230,9 +230,7 @@ with httpx.Client(
 ) as client:
     capabilities = client.get("/v1/capabilities")
     capabilities.raise_for_status()
-    available = {
-        item["resource"] for item in capabilities.json()["features"] if item["available"]
-    }
+    available = {item["resource"] for item in capabilities.json()["features"] if item["available"]}
     if resource not in available:
         raise SystemExit("Choose a resource advertised as available.")
     response = client.get(f"/v1/me/{resource}")

@@ -1,5 +1,25 @@
 # Verification record
 
+## Documentation and setup verification (2026-10-12)
+
+The documentation refresh adds complete personal/multi-user setup, a first-use walkthrough, a runnable client, troubleshooting, and operator/contributor guidance. These observations use synthetic settings and responses; they do not expand live institution coverage or establish hosted student reads.
+
+| Check | Observed result | Boundary |
+| --- | --- | --- |
+| Offline regression suite | **218 passed, 1 live test deselected**, both in the existing environment and a fresh Python 3.12.13 dependency installation | Includes 72 runnable-client cases and documentation link/anchor/code-syntax checks. No real student login. |
+| Static checks | Ruff lint and format checks passed; strict mypy passed the source package and runnable client | Source/API contracts are unchanged. |
+| Clean pip installation | Runtime installation and development extras succeeded in an isolated temporary environment; the new offline suite, lint, and strict types passed there | Fresh dependency resolution, rather than reuse of the checkout's installed package. |
+| Clean uv installation | `uv venv`, activated-environment `uv pip install .`, CLI help/check, example help, and `uv pip check` passed; 23 packages compatible | Public source files only, Python 3.12.13, private files excluded, synthetic multi-user settings. |
+| Configuration/setup smoke | Token generation, rejection of the blank template, valid personal/multi-user checks, and preservation of an existing synthetic `.env` passed | Configuration checking made no DNS or upstream request. The project's private configuration was untouched. |
+| Installed CLI over TCP | A temporary server started through `etlab-api serve`; health, Swagger, ReDoc, and OpenAPI returned 200; unauthenticated profile returned 401 with matching request ID, `no-store`, `nosniff`, and bearer challenge headers | Tested the installed package with newly resolved dependencies; the server was stopped afterward. HTTP serving does not establish browser rendering or portal compatibility. |
+| Embedded API examples | 16 Bash blocks, 5 Python blocks, and 9 JSON/model examples checked during authoring; all 5 Python examples also exercised with synthetic HTTPX responses | Multi-user cleanup occurred, and both download examples rejected HTTP errors before creating files. No actual downloads or private values. |
+| Distribution | Wheel rebuilt successfully without network/build isolation using the existing build tools | Packaging success is separate from deployment. |
+| Container workflow | Compose configuration check, healthy startup wait, public HTTP smoke, and cleanup added to CI; workflow YAML, shell blocks, and embedded Python syntax validated locally | Local Docker executable remains unavailable. Check the release's GitHub Actions run for the container runtime result. |
+
+Use `python -m pytest -m 'not live' -q` for deterministic checks and `python scripts/smoke_api.py` against a running default local server for public HTTP checks. The latter sends no student credentials or bearer token. The [contributor guide](contributing.md#local-checks) explains fresh-install and offline-build checks.
+
+## Initial implementation and deployment evidence
+
 Recorded on **2026-10-11** during initial implementation. This record separates deterministic API/code checks from real portal compatibility and deployment evidence. No student response bodies, credentials, tokens, or screenshots containing private data are included.
 
 | Layer | Observed result | What it establishes |
