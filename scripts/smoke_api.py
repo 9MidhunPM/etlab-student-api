@@ -20,7 +20,7 @@ def main() -> int:
     opener = build_opener(ProxyHandler({}), NoRedirects())
     try:
         for path in ("/healthz", "/docs", "/redoc", "/openapi.json", "/v1/me/profile"):
-            request = Request(base_url + path)
+            request = Request(base_url + path, headers={"User-Agent": "etlab-api-smoke/0.1.0"})
             try:
                 response = opener.open(request, timeout=15)
             except HTTPError as error:
