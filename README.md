@@ -10,52 +10,47 @@ Source: [9MidhunPM/etlab-student-api](https://github.com/9MidhunPM/etlab-student
 
 ## Quick start
 
-Requires Python 3.12 or later. From this directory:
+Requires Git and Python 3.12 or later. These commands use **Bash on Linux/macOS**. Start `bash` if your terminal uses another shell. The [setup guide](docs/getting-started.md) includes full prerequisites, a standalone uv alternative, and both operating modes. To run without host Python, use [Docker Compose](docs/deployment.md#docker-compose).
 
-```sh
+```bash
+git clone https://github.com/9MidhunPM/etlab-student-api.git
+cd etlab-student-api
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e '.[dev]'
-cp .env.example .env
-python -c 'import secrets; print(secrets.token_urlsafe(32))'
+python -m pip install .
+test -e .env || cp .env.example .env
+chmod 600 .env
+etlab-api token
 ```
 
-Put the generated token in `API_TOKEN` and fill in the credentials in `.env`:
+If you already have a checkout, begin there and preserve its configuration. Paste the newly generated token into `API_TOKEN` using your editor, then set your institution and personal credentials in `.env`. Replace every placeholder:
 
 ```dotenv
 APP_MODE=personal
 API_TOKEN=<your-generated-token>
 ETLAB_BASE_URL=https://sahrdaya.etlab.in
 ETLAB_USERNAME=<your-student-username>
-ETLAB_PASSWORD=<your-student-password>
+ETLAB_PASSWORD='<your-student-password>'
 ```
 
-Protect the file, then start one worker:
+Validate and start from the directory containing `.env`:
 
-```sh
-chmod 600 .env
-uvicorn etlab_api.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
+```bash
+etlab-api check
+etlab-api serve
 ```
 
-Alternatively, use uv:
+Expected check output: `Configuration valid. No upstream connection attempted.` The check validates local settings, origin syntax, and the hostname allowlist; it does not validate DNS, credentials, or portal compatibility. The server defaults to one worker on `127.0.0.1:8000`, with access logging and proxy-header rewriting disabled. Stop it with Ctrl+C.
 
-```sh
-uv sync --extra dev
-uv run uvicorn etlab_api.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1 --no-access-log --no-proxy-headers
+In another terminal, check process liveness:
+
+```bash
+curl --fail http://127.0.0.1:8000/healthz
 ```
 
-Open [Swagger UI](http://127.0.0.1:8000/docs) or [ReDoc](http://127.0.0.1:8000/redoc). The generated schema is at `/openapi.json`. Academic requests need `Authorization: Bearer <API_TOKEN>` in personal mode. Do not share this token: it grants access to your student data.
+Expected response: `{"status":"ok"}`. Open [Swagger UI](http://127.0.0.1:8000/docs) or [ReDoc](http://127.0.0.1:8000/redoc); the schema is at `/openapi.json`. Follow the [usage walkthrough](docs/usage.md) to authorize, discover available resources, and make your first data request. Academic requests require your personal `API_TOKEN` or a multi-user student token.
 
-```sh
-# Set this in the current shell without putting the token in shell history.
-read -rsp 'API token: ' ETLAB_API_TOKEN; export ETLAB_API_TOKEN; printf '\n'
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_API_TOKEN" \
-  http://127.0.0.1:8000/v1/capabilities
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_API_TOKEN" \
-  http://127.0.0.1:8000/v1/me/attendance
-```
-
-The first authenticated request logs in to the upstream portal. Later requests reuse that session and cache each parsed result for 60 seconds by default. The token does not authenticate directly to ETLab.
+In personal mode, the first capability/resource/download operation logs in upstream; session inspection and deletion do not. Later reads reuse that session and cache parsed results for 60 seconds by default. The token does not authenticate directly to ETLab.
 
 ## What the API exposes
 
@@ -82,6 +77,11 @@ See [authentication examples](docs/api.md#authentication), [configuration](docs/
 
 ## Documentation
 
+- [Documentation index and verification checkpoints](docs/README.md)
+- [Complete personal/multi-user setup and CLI reference](docs/getting-started.md)
+- [First-use walkthrough: Swagger, capabilities, filters, details, and files](docs/usage.md)
+- [Runnable Python client for both modes](examples/README.md)
+- [Troubleshooting by symptom and error code](docs/troubleshooting.md)
 - [API reference and curl/Python examples](docs/api.md)
 - [Configuration and defaults](docs/configuration.md)
 - [Local/Docker deployment and token rotation](docs/deployment.md)
@@ -94,7 +94,10 @@ See [authentication examples](docs/api.md#authentication), [configuration](docs/
 
 ## Development and verification
 
-```sh
+Activate your virtual environment and install contributor tools before running checks:
+
+```bash
+python -m pip install -e '.[dev]'
 python -m pytest -m 'not live'
 ruff check .
 mypy src/etlab_api
