@@ -1,18 +1,70 @@
-# Adapter development and verification
+# Contributing and verification
+
+Start with [getting started](getting-started.md) to prepare Python 3.12 or newer and a virtual environment. You can run the deterministic test suite without a student account or `.env`. The [documentation index](README.md) and [usage guide](usage.md) explain the public behavior an implementation must preserve.
+
+## Architecture and request flow
 
 The application separates destination-safe HTTP retrieval, student sessions/cache, portal-specific discovery/parsing, normalized page models, and FastAPI routes. Keep these boundaries when adding an institution variant. A route should not contain HTML scraping logic, and an adapter should not decide API authentication policy.
+
+```mermaid
+flowchart LR
+    Client[API client] --> API[FastAPI authentication and query validation]
+    API --> Sessions[Session lookup, lock, and cache]
+    Sessions --> Adapter[Student adapter: login, discovery, and read policy]
+    Adapter --> HTTP[Bounded HTTPS: DNS, TLS, and isolated cookies]
+    HTTP --> Portal[ETLab portal]
+    Adapter --> Parser[HTML fields, tables, filters, and links]
+    Parser --> Models[Typed page models]
+    Models --> API
+```
+
+A personal read authenticates the deployment bearer token, creates a lazy student session, and logs in on the first portal operation. Multi-user session creation first authenticates the operator token, then logs in with the submitted student credentials and returns a new bearer token. The session service owns expiry, per-session synchronization, and parsed-result caches. The adapter discovers reviewed routes and filters; the upstream client enforces safe destinations and response bounds. The route serializes the parsed page and applies local pagination. Attachment bodies bypass the parsed-page cache.
+
+| Module | Responsibility |
+| --- | --- |
+| [`app.py`](../src/etlab_api/app.py) | Application factory/lifespan, bearer authorization, routes, query validation, pagination, response headers, and safe errors. |
+| [`settings.py`](../src/etlab_api/settings.py), [`cli.py`](../src/etlab_api/cli.py) | Validated settings and the `token`, `check`, and single-worker `serve` commands. |
+| [`sessions.py`](../src/etlab_api/sessions.py) | Adapter protocol, isolated in-memory sessions, token hashes, cache bounds, expiry, cleanup, and login admission. |
+| [`upstream.py`](../src/etlab_api/upstream.py) | Allowlisted origins, public DNS validation/socket pinning, TLS, isolated cookie jars, redirects, operation deadlines, and body limits. |
+| [`adapters/student.py`](../src/etlab_api/adapters/student.py) | Observed login controls, resource discovery, safe GET forms, resource-specific link ownership, and attachments. |
+| [`adapters/parsing.py`](../src/etlab_api/adapters/parsing.py) | Original label/value extraction, merged/duplicate table headings, text, and safe filter descriptors. |
+| [`models.py`](../src/etlab_api/models.py), [`errors.py`](../src/etlab_api/errors.py) | Public typed contracts and stable safe failure codes. |
+
+There is no database, shared session store, background academic scrape, or MCP server. The [MCP document](mcp.md) describes future integration, rather than an implemented entry point.
 
 ## Local checks
 
 ```sh
 python -m pip install -e '.[dev]'
-python -m pytest -m 'not live'
-ruff check .
-mypy src/etlab_api
+python -m pytest -m 'not live' -q
+python -m ruff check .
+python -m mypy src/etlab_api
 python -m pip wheel --no-deps . -w /tmp/etlab-api-wheels
 ```
 
-CI runs offline/mocked tests, linting, type checks, package building, and an image build. Do not add real credentials to CI. The live test marker is excluded by default and requires explicit opt-in even when a `.env` exists.
+Installation and the wheel's isolated build setup can download dependencies. Once the tools are installed, tests, lint, and type checks run without portal access. For an offline wheel build, first ensure the selected environment already contains `setuptools>=75` and `wheel`; then use:
+
+```sh
+python -m pip wheel --no-deps --no-build-isolation --no-index . -w /tmp/etlab-api-wheels
+```
+
+If preparing that environment while online, install the build tools with `python -m pip install 'setuptools>=75' wheel`. The offline command deliberately fails rather than downloading missing build dependencies. `/tmp/etlab-api-wheels` is a POSIX output path; choose an equivalent temporary directory on another platform.
+
+CI runs deterministic/mocked tests, documentation links and example-client checks, linting, strict types, distribution building, and container checks. Container smoke checks exercise startup, health, documentation, and authorization without a student login. They do not establish an institution's compatibility. Do not add real credentials to CI.
+
+Always use `-m 'not live'` for the ordinary suite. Live tests are excluded by that command and additionally require explicit `ETLAB_LIVE_TESTS=1` opt-in even if `.env` exists. Mocked API/session tests construct settings with `_env_file=None` and use synthetic portal responses.
+
+For a packaging check, install a newly built wheel into a separate environment and run `etlab-api --help` and `etlab-api check` from a temporary directory with explicit synthetic multi-user settings. Do not use the checkout's private `.env`. A check using shared installed dependencies validates package/entrypoint behavior, while a clean isolated dependency installation additionally verifies dependency resolution; report which one was performed.
+
+When editing guides, update their relative links and headings together. Runnable examples must use the documented bearer-token roles, handle safe error codes, and clean up multi-user sessions. Test their request paths against mocked responses, including cleanup after a read fails; a syntax-only check is insufficient for those examples.
+
+Check the public HTTP routes and unauthenticated data boundary of a running local server with:
+
+```bash
+python scripts/smoke_api.py
+```
+
+Use `--api-url https://your-api.example` for a hosted service. The script checks health, Swagger/ReDoc/schema responses, and an unauthenticated profile rejection; it uses no token or student credentials and does not contact ETLab through a data read. Run it with the default enabled documentation routes. HTTP checks establish serving behavior rather than visual browser rendering or successful student authentication.
 
 ## Adding a layout variant
 
@@ -33,7 +85,7 @@ Test at least login success/failure/challenge, navigation discovery, unknown mod
 
 ## Live verification
 
-Create `.env` with a generated `API_TOKEN`, `ETLAB_BASE_URL`, and authorized `ETLAB_USERNAME`/`ETLAB_PASSWORD`. The live harness explicitly uses personal mode even if the deployment normally uses multi-user mode:
+Live verification is separate from routine checks. Only run it for an account whose owner has authorized the reads. Prepare the private `.env` using the [setup guide](getting-started.md), with a generated `API_TOKEN`, `ETLAB_BASE_URL`, and authorized `ETLAB_USERNAME`/`ETLAB_PASSWORD`; preserve any existing configuration rather than overwriting it. The live harness explicitly uses personal mode even if the deployment normally uses multi-user mode:
 
 ```sh
 ETLAB_LIVE_TESTS=1 python -m pytest -m live -q
@@ -58,3 +110,5 @@ Live tests should fail on bad credentials, challenges, core parser breakage, or 
 ## Before publishing changes
 
 Check source and fixtures for credentials and private data, run the checks, and distinguish automated fixture evidence from authenticated live evidence in the change description. Document any new settings or response contract changes. Never publish a raw HAR, `.env`, or upstream cookies.
+
+Keep commits focused: onboarding/configuration, usage/examples, operations, and verification can be reviewed independently. Update the dated [verification record](verification.md) only with checks actually observed, and preserve its limits around hosted student reads, alternate institutions, filters, and linked workflows. Use [troubleshooting](troubleshooting.md) when a failure belongs to configuration or upstream availability rather than an adapter regression.

@@ -1,14 +1,16 @@
 # Configuration
 
-Settings are loaded from `.env` in the current working directory. Process environment variables take precedence. Copy `.env.example`, generate a random token, and keep `.env` out of version control. Unknown keys are ignored; supported keys are below.
+Settings are loaded from `.env` in the **current working directory**. Process environment variables take precedence, including exported empty values. Start the CLI from the repository root, or deliberately set a service manager's working directory to your protected configuration directory. A `.env` file beside the installed package is not automatically discovered.
+
+Use the [setup guide](getting-started.md) to install and configure the server. Preserve your existing file when repeating setup with `test -e .env || cp .env.example .env`; edit it privately and keep it out of version control. Unknown keys are ignored, so misspelled names do not produce an unknown-setting warning. Use the exact supported names below.
 
 The example selects personal mode while leaving credentials/token blank, so it must be filled before local personal-mode startup. For a shared hosted service with no stored student credentials, deliberately set `APP_MODE=multiuser`, leave `ETLAB_USERNAME`/`ETLAB_PASSWORD` empty, and generate a separate private operator token. See the [Dokploy runtime configuration](dokploy.md#runtime-environment) for the complete credential-free deployment template.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `APP_MODE` | `personal` | `personal` for one configured student; `multiuser` for isolated student sessions. |
-| `API_TOKEN` | Required; no default | Deployment bearer token, at least 32 characters. Generate it using `secrets.token_urlsafe(32)`. |
-| `ETLAB_BASE_URL` | `https://sahrdaya.etlab.in` | Personal-mode college origin. HTTPS on port 443 only; no path, query, fragment, or embedded credentials. |
+| `API_TOKEN` | Required; no default | Deployment bearer token, at least 32 characters. Generate it using `etlab-api token`; it intentionally prints a new secret. |
+| `ETLAB_BASE_URL` | `https://sahrdaya.etlab.in` | Personal-mode college origin. HTTPS on port 443 only; no non-root path, query, fragment, or embedded credentials. The CLI checks this configured origin in both modes. |
 | `ETLAB_USERNAME` | Required in personal mode | Student login username. Multi-user requests provide their own credentials. |
 | `ETLAB_PASSWORD` | Required in personal mode | Student login password. Quote values as needed for dotenv syntax, especially `#`, spaces, or newlines. |
 | `ETLAB_ALLOWED_HOSTS` | `*.etlab.in` | Comma-separated allowed institution hostnames. Replaces the default list when set. |
@@ -38,6 +40,23 @@ An allowlisted hostname must still resolve exclusively to public addresses. Priv
 
 Timeout, session duration, session count, and body-size values must be positive. The idle timeout must not exceed the maximum session lifetime. Cache TTL and upstream interval may be zero but not negative. Invalid configuration prevents application startup. Secret values are hidden from configuration diagnostics.
 
+## Edit and validate settings
+
+`.env` uses dotenv syntax, rather than shell-script syntax. Keep one `NAME=value` setting per line. Quotes can preserve spaces and `#` characters in passwords; remove example placeholders rather than treating them as working credentials. Do not source `.env` into a shell just to configure the API.
+
+```dotenv
+# Illustrative value only; replace it in your private configuration.
+ETLAB_PASSWORD='example password containing # and spaces'
+```
+
+Use `etlab-api check` after editing. For a Docker-only installation, use `docker compose run --rm --no-deps etlab-api etlab-api check` after building the image. Success prints `Configuration valid. No upstream connection attempted.` Failure exits with status 2 and a safe configuration diagnostic.
+
+This check validates required settings, field types and numeric limits, token length, and the configured institution's HTTPS origin/hostname allowlist. It does **not** resolve DNS, connect to ETLab, verify student credentials, test filters or attachments, or prove a resource parser works. The [usage guide](usage.md) separates these later checks.
+
+Settings are fixed for the running process. Restart a Python process after changing its configuration. For Compose, recreate the container to load new `.env` values; `docker compose restart` retains the old container environment. See [configuration reload](deployment.md#reload-configuration-and-update).
+
+If a setting appears unchanged, check which working directory launched the process and whether that variable is exported by your shell or service manager. Check the presence of an override without printing its value, and remove an obsolete export when appropriate. Never publish `.env`, resolved Compose configuration, `env` output, or container environment inspections. See [startup troubleshooting](troubleshooting.md#startup-and-local-tools).
+
 ## Caching and expiration
 
 Each session has its own cache. Cache keys include resource, upstream filters, and detail ID. API pagination uses the cached parsed page rather than fetching once per page. Successful parsed results are cached; errors and attachment bodies are not. Each session retains at most 128 cache entries within `CACHE_MAX_BYTES` of serialized content. Results above that budget are returned without caching, and object overhead is additional to the serialized budget. The `fetched_at` timestamp identifies the upstream fetch, so it stays the same on a cache hit. Expired entries are removed during reads and periodic cleanup.
@@ -56,4 +75,4 @@ Keep `API_TOKEN` in the server and trusted application backend. In multi-user mo
 
 Personal credentials stay in server configuration for automatic reauthentication. Successful reauthentication with the same username/institution retains the adapter's current detail/file descriptors so the pending read can retry; changing the username clears descriptors. The adapter stores the account identity as a hash and retains no password. Multi-user credentials are used only for the initial login and are not stored in the managed session. A new login is required after upstream authentication expires in multi-user mode.
 
-See [token rotation](deployment.md#token-rotation) and the [security model](security.md).
+See [token rotation](deployment.md#token-rotation), [troubleshooting](troubleshooting.md), and the [security model](security.md). All guides are listed in the [documentation index](README.md).

@@ -6,6 +6,8 @@ The current public source is [9MidhunPM/etlab-student-api](https://github.com/9M
 
 `.env.example` is an editable personal-mode template. Its blank credentials and blank token deliberately do not constitute a bootable configuration. A shared deployment must override the mode and set a newly generated operator token.
 
+Before configuring the application, have an accessible Dokploy project, a GitHub repository connection, an API hostname you control, and a trusted backend that will keep the operator token private. The repository Dockerfile supplies Python and the CLI; host Python and a database are unnecessary. Follow [local Docker setup](deployment.md#docker-compose) if you want to validate the image and configuration before hosting it.
+
 ## Source and build
 
 Create an Application in the intended Dokploy project/environment. Select the GitHub provider with access to your ETLab API repository (the current source is `9MidhunPM/etlab-student-api`), the intended branch (normally `main`), and build path `/`. Configure runtime variables in the Environment tab and keep one application replica in the Advanced/cluster settings. These are separate application settings in [Dokploy's Applications documentation](https://docs.dokploy.com/docs/core/applications).
@@ -31,10 +33,18 @@ No database, archive volume, student `.env` mount, or host port publication is r
 Generate a **new deployment-only operator token**:
 
 ```sh
-python -c 'import secrets; print(secrets.token_urlsafe(32))'
+etlab-api token
 ```
 
-Store that value in Dokploy's runtime Environment configuration and the trusted backend's secret store. Do not reuse the local development token or include any real token in Git, documentation, image build arguments, or logs. The application's Docker build requires no API secret; leave Build Time Arguments and Build-time Secrets empty.
+That command is available after the [Python installation](getting-started.md). For a Docker-only installation, after preparing the local Compose file and building its image, use this equivalent command instead:
+
+```sh
+docker compose run --rm --no-deps etlab-api etlab-api token
+```
+
+Both commands intentionally print a new secret and require no student credentials or upstream connection. Copy the value privately into the runtime secret field rather than a shell command. Generate a separate token for this deployment.
+
+Store that value in Dokploy's runtime Environment configuration and the trusted backend's secret store. Do not reuse the local development token or include any real token in Git, documentation, image build arguments, or logs. The application's Docker build requires no API secret; leave Build Time Arguments and Build-time Secrets empty. The local `.env` is excluded from the image and does not configure the hosted application.
 
 Use the `.env.example` defaults with these intentional overrides:
 
@@ -83,7 +93,9 @@ The app sees the proxy's socket address because forwarded-IP rewriting is disabl
 
 ## Deploy and verify
 
-Save the source, runtime environment, and domain settings, then deploy. Wait for the build/deployment to complete and the container to become healthy before checking the HTTPS endpoint. A build marked successful is separate evidence from application health and working domain routing.
+Save the source, runtime environment, and domain settings, then deploy. Wait for the deployment to reach `done` and the container to become healthy before checking the HTTPS endpoint. A build marked successful is separate evidence from application health and working domain routing.
+
+If the container cannot start, check the deployment/startup logs for a safe configuration diagnostic. A container console can run `etlab-api check` to validate its runtime settings without DNS, portal login, or credential output. Do not dump the container environment to diagnose a missing setting. Use [troubleshooting](troubleshooting.md#docker-and-hosted-routing) for build-versus-runtime and proxy failures.
 
 Check the confirmed HTTPS base URL:
 
@@ -93,12 +105,14 @@ curl --fail-with-body https://etlab-api.midhunpm.in/healthz
 curl --fail-with-body https://etlab-api.midhunpm.in/openapi.json
 ```
 
-Check that `/docs` renders in a browser, and an unauthenticated `/v1/me/profile` request returns 401 with `Cache-Control: no-store`. These checks require no student password. In multi-user mode, the operator token cannot read student data; its intended operation is admitting `POST /v1/sessions`. Use the [multi-user examples](api.md#multi-user-mode) when authorized student login testing is requested.
+Check that `/docs` renders in a browser, and an unauthenticated `/v1/me/profile` request returns 401 with `Cache-Control: no-store`. Skip schema/docs checks if you deliberately configured `DOCS_ENABLED=false`; those routes should return 404. These checks require no student password. In multi-user mode, the operator token cannot read student data; its intended operation is admitting `POST /v1/sessions`. Use the [multi-user walkthrough](usage.md) and [authentication examples](api.md#multi-user-mode) when authorized student login testing is requested.
 
 Do not put a username/password into the deployment merely to make its health check pass. `/healthz` checks the worker and never logs in to ETLab. A running credential-free multi-user server is valid; institution compatibility is verified separately for each authorized session.
 
 ## Updates and token rotation
 
-Deploy the intended Git commit and retain its deployment record for rollback. Every replacement/restart clears multi-user sessions, so clients must handle a 401 by obtaining a fresh session through their authenticated backend flow.
+Deploy the intended Git commit and retain the previously verified source/image and deployment record for rollback. If an update fails, redeploy that retained version through the same Application, keep the current protected runtime settings, and repeat health/TLS/authentication-boundary checks. No academic data migration is required. Every replacement/restart clears multi-user sessions, so clients must handle a 401 by obtaining a fresh session through their authenticated backend flow.
 
-For operator-token rotation, generate a new value, update runtime configuration and trusted clients, then redeploy. There is no old/new token grace period. Never retrieve or publish existing runtime secrets just to verify that the service works; verify behavior with the appropriate authorized token privately.
+For operator-token rotation, generate a new value, update runtime configuration and trusted clients, then redeploy. Saving an edited secret alone does not change settings already loaded by the running process. There is no old/new token grace period. Never retrieve or publish existing runtime secrets just to verify that the service works; verify behavior with the appropriate authorized token privately.
+
+See [configuration](configuration.md), [operations](deployment.md#operational-checks), and the [documentation index](README.md). Record hosted student reads separately from a healthy container and publicly rendered documentation; the earlier historical verification does not certify every future release.
