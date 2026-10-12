@@ -2,6 +2,8 @@
 
 Base URL for local development: `http://127.0.0.1:8000`. Use HTTPS for remote deployments. All data/session endpoints require a bearer token. `/healthz` and enabled documentation/schema routes are public.
 
+For your first request, follow the [usage walkthrough](usage.md). This page describes the complete response contract and endpoint rules. Shell examples use **Bash** in an interactive terminal; resource responses can contain private student data.
+
 Interactive documentation lives at `/docs` and `/redoc`; the schema is `/openapi.json`. The schema contains a concrete list and detail route for each resource. Dynamic upstream filter names cannot be enumerated statically; inspect the returned `data.filters` collection, including each control's `input_type`.
 
 ## Authentication
@@ -12,11 +14,13 @@ The adapter preserves observed hidden login fields and the selected Login submit
 
 ### Personal mode
 
-Use the configured `API_TOKEN` for reads and session inspection/deletion. Server-side `.env` credentials perform the upstream login lazily. One reauthentication is attempted when the portal session expires.
+Use the configured `API_TOKEN` for reads and session inspection/deletion. Server-side `.env` credentials perform the upstream login lazily on the first capabilities, academic-page, or attachment operation. Health checks, documentation, session inspection, and deletion do not log in to the portal. One reauthentication is attempted when the portal session expires.
 
-```sh
-read -rsp 'API token: ' ETLAB_API_TOKEN; export ETLAB_API_TOKEN; printf '\n'
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_API_TOKEN" \
+```bash
+read -r -s -p 'API token: ' ETLAB_API_TOKEN
+export ETLAB_API_TOKEN
+printf '\n'
+curl --noproxy '*' --fail-with-body --max-time 60 -H "Authorization: Bearer $ETLAB_API_TOKEN" \
   http://127.0.0.1:8000/v1/me/profile
 ```
 
@@ -30,6 +34,8 @@ with httpx.Client(
     base_url="http://127.0.0.1:8000",
     headers={"Authorization": f"Bearer {os.environ['ETLAB_API_TOKEN']}"},
     timeout=60,
+    follow_redirects=False,
+    trust_env=False,
 ) as client:
     response = client.get("/v1/me/attendance", params={"page": 1, "page_size": 50})
     response.raise_for_status()
@@ -64,25 +70,35 @@ On success, HTTP 201 returns:
 
 `expires_at` is the maximum lifetime. The session can expire sooner through idleness, upstream authentication expiry, deletion, or restart. Use the returned student token for subsequent requests. Using the deployment token for student reads returns `session_token_required`.
 
-The following curl example reads credentials interactively and streams the JSON body on stdin. It stores the session token without printing it:
+The following curl example reads credentials interactively and streams the JSON body on stdin. It stores the session token without printing it. Run the complete block in a fresh Bash shell; its exit trap attempts cleanup if a later request fails. For capability checks, selected resource reads, and safe diagnostics, the [runnable client](../examples/read_student.py) is the simpler option.
 
-```sh
+```bash
 set -euo pipefail
-read -rsp 'Deployment API token: ' ETLAB_API_TOKEN; export ETLAB_API_TOKEN; printf '\n'
+read -r -s -p 'Deployment API token: ' ETLAB_API_TOKEN
+export ETLAB_API_TOKEN
+printf '\n'
 ETLAB_SESSION_TOKEN="$(
   python -c 'import getpass,json; print(json.dumps({"base_url":"https://sahrdaya.etlab.in","username":getpass.getpass("Student username: "),"password":getpass.getpass("Student password: ")}))' |
-  curl --silent --show-error --fail-with-body \
+  curl --noproxy '*' --silent --show-error --fail-with-body --max-time 60 \
     -H "Authorization: Bearer $ETLAB_API_TOKEN" \
     -H 'Content-Type: application/json' \
     --data-binary @- http://127.0.0.1:8000/v1/sessions |
   python -c 'import json,sys; print(json.load(sys.stdin)["session_token"])'
 )"
 export ETLAB_SESSION_TOKEN
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_SESSION_TOKEN" \
-  http://127.0.0.1:8000/v1/me/attendance
-curl --fail-with-body -X DELETE -H "Authorization: Bearer $ETLAB_SESSION_TOKEN" \
-  http://127.0.0.1:8000/v1/session
-unset ETLAB_SESSION_TOKEN
+cleanup_session() {
+  curl --noproxy '*' --silent --show-error --max-time 5 --output /dev/null \
+    -X DELETE -H "Authorization: Bearer $ETLAB_SESSION_TOKEN" \
+    http://127.0.0.1:8000/v1/session || true
+  unset ETLAB_SESSION_TOKEN
+}
+trap cleanup_session EXIT
+curl --noproxy '*' --fail-with-body --max-time 60 \
+  -H "Authorization: Bearer $ETLAB_SESSION_TOKEN" \
+  http://127.0.0.1:8000/v1/capabilities
+cleanup_session
+trap - EXIT
+unset ETLAB_API_TOKEN
 ```
 
 Python, including cleanup:
@@ -92,7 +108,12 @@ import getpass
 import os
 import httpx
 
-with httpx.Client(base_url="http://127.0.0.1:8000", timeout=60) as client:
+with httpx.Client(
+    base_url="http://127.0.0.1:8000",
+    timeout=60,
+    follow_redirects=False,
+    trust_env=False,
+) as client:
     login = client.post(
         "/v1/sessions",
         headers={"Authorization": f"Bearer {os.environ['ETLAB_API_TOKEN']}"},
@@ -110,10 +131,17 @@ with httpx.Client(base_url="http://127.0.0.1:8000", timeout=60) as client:
         available = [item["resource"] for item in response.json()["features"] if item["available"]]
         print("Available modules:", ", ".join(available))
     finally:
-        client.delete("/v1/session")
+        try:
+            deleted = client.delete("/v1/session", timeout=5)
+            if deleted.status_code not in (204, 401):
+                print("Session cleanup failed; HTTP", deleted.status_code)
+        except httpx.RequestError:
+            print("Session cleanup could not reach the API.")
 ```
 
 Never print or log login payloads or bearer tokens. Multi-user passwords are discarded after login. The upstream session cannot automatically reauthenticate; create a new API session when it expires.
+
+Cleanup is best effort when the server cannot be reached. A session whose token was not received after a failed login response cannot be deleted by the client and expires according to the server's limits. Do not blindly repeat session-creation POSTs after transport failures. See [errors and retry behavior](#errors-and-retry-behavior).
 
 ## Endpoints
 
@@ -122,7 +150,7 @@ Never print or log login payloads or bearer tokens. Multi-user passwords are dis
 | `GET /healthz` | `{"status":"ok"}` | Worker liveness only; does not contact ETLab. |
 | `POST /v1/sessions` | `SessionCreated`, HTTP 201 | Multi-user login with deployment token. Personal mode returns `mode_mismatch`. |
 | `GET /v1/session` | `SessionInfo` | Mode, institution, and effective expiry; personal expiry is `null`. |
-| `DELETE /v1/session` | HTTP 204, no body | Clear this session's cookies, cache, and token. Personal mode can lazily log in again. |
+| `DELETE /v1/session` | HTTP 204, no body | Clear upstream cookies, cache, and links. Revoke a multi-user student token; the personal deployment token remains valid. |
 | `GET /v1/capabilities` | `Capabilities` | Account-specific module discovery and verification status. |
 | `GET /v1/me/{resource}` | `AcademicResponse` | Retrieve an academic page with supported filters and local pagination. |
 | `GET /v1/me/{resource}/{detail_id}` | `AcademicResponse` | Follow a detail ID returned by this resource and session. |
@@ -218,9 +246,10 @@ All other query keys are upstream filter names. First fetch the page, inspect `d
 
 The 512-character/tighter-`maxlength` limit and control-character rejection apply to all input controls. Empty input values are accepted to clear a filter; the portal determines their meaning. The API validates individual date inputs and preserves the form's other current/default values, while the portal determines date-range semantics. Password, credential, action, disabled, and read-only controls are not offered as editable API filters.
 
-```sh
+```bash
 # Illustrative only: replace the name/value with those actually returned by data.filters.
-curl --fail-with-body --get -H "Authorization: Bearer $ETLAB_API_TOKEN" \
+curl --noproxy '*' --fail-with-body --max-time 60 --get \
+  -H "Authorization: Bearer $ETLAB_API_TOKEN" \
   --data-urlencode 'Attendance[semester]=3' \
   --data-urlencode 'page=1' --data-urlencode 'page_size=50' \
   http://127.0.0.1:8000/v1/me/attendance
@@ -230,8 +259,9 @@ Multiple filters must belong to the same identified read-only GET form. Unknown 
 
 A discovered date range can be requested the same way. This example is synthetic and works only when the page actually advertises these names as supported date controls:
 
-```sh
-curl --fail-with-body --get -H "Authorization: Bearer $ETLAB_API_TOKEN" \
+```bash
+curl --noproxy '*' --fail-with-body --max-time 60 --get \
+  -H "Authorization: Bearer $ETLAB_API_TOKEN" \
   --data-urlencode 'Attendance[from]=2026-09-01' \
   --data-urlencode 'Attendance[to]=2026-09-30' \
   http://127.0.0.1:8000/v1/me/attendance
@@ -243,12 +273,32 @@ A link with `kind=detail` is read at `/v1/me/{resource}/{id}` using the resource
 
 Each adapter keeps at most 1,024 detail/attachment descriptors shared across resources, evicting those least recently registered or used. Parsed pages emit only IDs still retained in that registry, so an oversized page exposes at most 1,024 links. An evicted ID returns `not_found` (404); refresh its source page after the cache TTL or create a fresh API session to obtain current IDs. Personal-mode automatic reauthentication to the same account retains current descriptors for the one retry. Successful login as a different username and session destruction clear them. Descriptor retention does not guarantee an upstream file URL remains valid indefinitely.
 
-```sh
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_API_TOKEN" \
+```bash
+curl --noproxy '*' --fail-with-body --max-time 60 -H "Authorization: Bearer $ETLAB_API_TOKEN" \
   http://127.0.0.1:8000/v1/me/assignments/opaque-detail-id
-curl --fail-with-body -H "Authorization: Bearer $ETLAB_API_TOKEN" \
-  --output material.bin http://127.0.0.1:8000/v1/attachments/opaque-attachment-id
 ```
+
+For a download, check the HTTP status **before creating the output file**. This personal-mode example deliberately saves private content. Replace the ID with an attachment returned by your active session; in multi-user mode use its student session token instead. `xb` refuses to overwrite an existing file.
+
+```python
+import os
+from pathlib import Path
+import httpx
+
+with httpx.Client(
+    base_url="http://127.0.0.1:8000",
+    headers={"Authorization": f"Bearer {os.environ['ETLAB_API_TOKEN']}"},
+    timeout=60,
+    follow_redirects=False,
+    trust_env=False,
+) as client:
+    downloaded = client.get("/v1/attachments/<id-from-data.links>")
+    downloaded.raise_for_status()
+    with Path("material.bin").open("xb") as destination:
+        destination.write(downloaded.content)
+```
+
+`curl --fail-with-body --output material.bin` can write an error JSON body into that filename on failure. Do not treat a file's existence as a successful download. The [usage guide](usage.md#follow-details-and-download-files) shows how to select links from a resource response.
 
 File responses include a sanitized `Content-Disposition: attachment` filename and an upstream content type when valid. Content is bounded in memory; it is not cached or stored on disk by the server. The default file limit is 25 MiB. A portal HTML login/error page is rejected rather than returned as a successful file.
 
@@ -257,6 +307,16 @@ Approved external file links can be registered only when discovered on a read pa
 ## Capabilities
 
 Capabilities return `institution`, `adapter`, `adapter_version`, `verification`, and `features`. Each feature has `resource`, `available`, `status`, and optional `reason`. A discovered navigation link receives `status=discovered`; it does not establish that all details and filters have been tested. See the [compatibility matrix](compatibility.md) for evidence-level meanings.
+
+The current generic adapter returns top-level `verification=fixture_tested` and one entry for every resource, with feature status `discovered` or `unavailable`. These values describe adapter fixture coverage and current navigation discovery; they do not automatically become `live_verified` after a successful request. See a [synthetic capability example](usage.md#discover-available-resources).
+
+## Session lifecycle
+
+`GET /v1/session` reports the authenticated API session without contacting ETLab. Personal mode returns `expires_at=null`; the configured token remains usable after clearing the upstream session. The next capabilities or academic operation can log in again from server configuration.
+
+For multi-user mode, successful bearer authentication renews the idle clock, including session inspection and requests that subsequently fail during a resource operation. Inspection returns the earlier of the renewed idle deadline and the fixed maximum lifetime. Polling cannot extend that maximum. The session may also become unusable when upstream authentication expires, it is deleted, or the process restarts.
+
+`DELETE /v1/session` returns 204 without JSON on success. An already invalid/expired token returns 401; cleanup clients may treat that as no active session remaining. Deletion clears the session's discovered IDs, so rediscover links after obtaining a new session. See [inspection and deletion examples](usage.md#inspect-and-clear-the-session).
 
 ## Errors and retry behavior
 
